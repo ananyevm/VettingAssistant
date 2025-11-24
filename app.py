@@ -27,12 +27,28 @@ if os.path.exists(json_dir):
     shutil.rmtree(json_dir)
 os.makedirs(json_dir, exist_ok=True)
 
+def get_openai_api_key() -> Optional[str]:
+    """Get OpenAI API key from Streamlit secrets or environment variables"""
+    try:
+        # Try Streamlit secrets first
+        return st.secrets["OPENAI_API_KEY"]
+    except (KeyError, FileNotFoundError):
+        # Fall back to environment variable
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            st.error("OpenAI API key not found. Please set it in Streamlit secrets or as an environment variable.")
+            return None
+        return api_key
+
 def get_openai_summary(content: str, output_data_info: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """
     Send content to OpenAI GPT-4o for summarization and information assessment
     """
     try:
-        client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+        api_key = get_openai_api_key()
+        if not api_key:
+            return None
+        client = openai.OpenAI(api_key=api_key)
         
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -126,7 +142,10 @@ def extract_text_from_docx(docx_file) -> str:
 def clean_table_with_openai(raw_data: str, filename: str) -> Optional[str]:
     """Use OpenAI to clean and structure table data"""
     try:
-        client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+        api_key = get_openai_api_key()
+        if not api_key:
+            return None
+        client = openai.OpenAI(api_key=api_key)
         
         prompt = f"""
 You are a data cleaning expert. I have raw table data extracted from an Excel file that may contain:
@@ -244,7 +263,10 @@ def extract_data_from_csv_xlsx(data_file) -> Dict[str, Any]:
 def generate_rule_of_10_checker(cleaned_file_path: str, filename: str) -> Optional[str]:
     """Use OpenAI to generate Python code for rule of 10 checking"""
     try:
-        client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+        api_key = get_openai_api_key()
+        if not api_key:
+            return None
+        client = openai.OpenAI(api_key=api_key)
         
         prompt = f"""
 Create a Python script that checks the "rule of 10" for a CSV file. The rule of 10 states that all cells in the table should either be empty or contain a number that is 10 or larger.
@@ -304,7 +326,10 @@ Generate a complete Python script named "rule_of_10_checker.py".
 def generate_dominance_checker(cleaned_file_path: str, filename: str) -> Optional[str]:
     """Use OpenAI to generate Python code for dominance rule checking"""
     try:
-        client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+        api_key = get_openai_api_key()
+        if not api_key:
+            return None
+        client = openai.OpenAI(api_key=api_key)
         
         prompt = f"""
 Create a Python script that checks the "dominance rule" for a CSV file. The dominance rule checks if any cell value divided by its row sum exceeds 0.8 (80%).
