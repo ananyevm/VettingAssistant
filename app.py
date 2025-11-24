@@ -31,7 +31,12 @@ def get_openai_api_key() -> Optional[str]:
     """Get OpenAI API key from Streamlit secrets or environment variables"""
     try:
         # Try Streamlit secrets first
-        return st.secrets["OPENAI_API_KEY"]
+        if hasattr(st, 'secrets') and st.secrets:
+            # Try different possible key names
+            api_key = (st.secrets.get("OPENAI_API_KEY") or 
+                      st.secrets.get("openai_api_key") or
+                      st.secrets.get("openai", {}).get("api_key"))
+        return api_key
     except (KeyError, FileNotFoundError):
         # Fall back to environment variable
         api_key = os.environ.get("OPENAI_API_KEY")
