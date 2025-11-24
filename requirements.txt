@@ -3,3 +3,4 @@ openai>=1.0.0
 python-docx>=0.8.11
 PyPDF2>=3.0.1
 openpyxl>=3.1.5
+pandas
