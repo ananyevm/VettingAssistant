@@ -37,4 +37,5 @@ def check_dominance_rule(csv_file, json_file):
     print(f"Total violations found: {len(violations)}")
     return json_file
 
-check_dominance_rule('intermediate/supporting_cleaned.csv', 'json/dominance_violations.json')
+if __name__ == "__main__":
+    check_dominance_rule('intermediate/supporting_cleaned.csv', 'json/dominance_violations.json')
