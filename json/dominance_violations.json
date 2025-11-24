@@ -1,0 +1,1 @@
+{"violations": [{"row": 4, "column": "age4", "value": 1000, "row_sum": 1122, "dominance_ratio": 0.8912655971479501, "position": [4, 4]}, {"row": 7, "column": "age3", "value": 534, "row_sum": 627, "dominance_ratio": 0.8516746411483254, "position": [7, 3]}]}
