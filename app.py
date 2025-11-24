@@ -432,12 +432,19 @@ def run_rule_of_10_check(cleaned_file_path: str, filename: str) -> Dict[str, Any
         with open(checker_path, 'w', encoding='utf-8') as f:
             f.write(checker_code)
         
-        # Execute the checker
-        result = os.system(f"python3 {checker_path}")
-        
-        if result == 0:
-            # Read the results JSON
+        # Execute the checker directly
+        import sys
+        import importlib.util
+        try:
+            # Load the module dynamically to avoid caching issues
+            spec = importlib.util.spec_from_file_location("rule_of_10_checker", checker_path)
+            rule_checker = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(rule_checker)
+            csv_path = 'intermediate/supporting_cleaned.csv'
             results_path = "json/rule_of_10_violations.json"
+            rule_checker.check_rule_of_10(csv_path, results_path)
+            
+            # Read the results JSON
             if os.path.exists(results_path):
                 with open(results_path, 'r') as f:
                     violations_data = json.loads(f.read())
@@ -449,8 +456,8 @@ def run_rule_of_10_check(cleaned_file_path: str, filename: str) -> Dict[str, Any
                 }
             else:
                 return {"error": "Results file not found"}
-        else:
-            return {"error": "Rule of 10 checker execution failed"}
+        except Exception as exec_error:
+            return {"error": f"Rule of 10 checker execution failed: {str(exec_error)}"}
             
     except Exception as e:
         return {"error": f"Error running rule of 10 check: {str(e)}"}
@@ -469,12 +476,19 @@ def run_dominance_check(cleaned_file_path: str, filename: str) -> Dict[str, Any]
         with open(checker_path, 'w', encoding='utf-8') as f:
             f.write(checker_code)
         
-        # Execute the checker
-        result = os.system(f"python3 {checker_path}")
-        
-        if result == 0:
-            # Read the results JSON
+        # Execute the checker directly
+        import sys
+        import importlib.util
+        try:
+            # Load the module dynamically to avoid caching issues
+            spec = importlib.util.spec_from_file_location("dominance_checker", checker_path)
+            dominance_checker = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(dominance_checker)
+            csv_path = 'intermediate/supporting_cleaned.csv'
             results_path = "json/dominance_violations.json"
+            dominance_checker.check_dominance_rule(csv_path, results_path)
+            
+            # Read the results JSON
             if os.path.exists(results_path):
                 with open(results_path, 'r') as f:
                     violations_data = json.loads(f.read())
@@ -486,8 +500,8 @@ def run_dominance_check(cleaned_file_path: str, filename: str) -> Dict[str, Any]
                 }
             else:
                 return {"error": "Dominance results file not found"}
-        else:
-            return {"error": "Dominance checker execution failed"}
+        except Exception as exec_error:
+            return {"error": f"Dominance checker execution failed: {str(exec_error)}"}
             
     except Exception as e:
         return {"error": f"Error running dominance check: {str(e)}"}
