@@ -1,41 +1,62 @@
 import pandas as pd
 import json
 import os
-import numpy as np
 
-def check_dominance_rule(csv_file, json_file):
+def check_dominance_rule(csv_file):
     df = pd.read_csv(csv_file)
     violations = []
-
+    
     for index, row in df.iterrows():
-        numeric_values = [value for value in row if isinstance(value, (int, float, np.number))]
+        numeric_values = [value for value in row if isinstance(value, (int, float))]
         row_sum = sum(numeric_values)
-
+        
         if row_sum == 0 or pd.isna(row_sum):
             continue
-
-        for col, value in row.items():
-            if isinstance(value, (int, float, np.number)):
-                dominance_ratio = value / row_sum
+        
+        for col in df.columns:
+            cell_value = row[col]
+            if isinstance(cell_value, (int, float)):
+                dominance_ratio = cell_value / row_sum
                 if dominance_ratio > 0.8:
+                    cell_position = [index, df.columns.get_loc(col)]
                     violations.append({
                         "row": index,
                         "column": col,
-                        "value": value.item() if isinstance(value, (np.generic)) else value,
+                        "cell_value": cell_value,
                         "row_sum": row_sum,
                         "dominance_ratio": dominance_ratio,
-                        "position": [index, row.index.get_loc(col)]
+                        "cell_position": cell_position
                     })
-
-    if not os.path.exists('json'):
-        os.makedirs('json')
-
-    with open(json_file, 'w') as f:
-        json.dump({"violations": violations}, f)
-
+    
+    is_percentage_data = False
+    percentage_detection_reason = ""
+    failing_columns = set(violation['column'] for violation in violations)
+    
+    if failing_columns:
+        percentage_columns = ['age1', 'age2', 'age3', 'age4']
+        is_percentage_data = all(col in percentage_columns for col in failing_columns)
+        
+        if is_percentage_data:
+            percentage_detection_reason = "All failing columns are recognized as percentage/share columns."
+        else:
+            percentage_detection_reason = "Not all failing columns are recognized as percentage/share columns."
+    
+    results = {
+        "violations": violations,
+        "is_percentage_data": is_percentage_data,
+        "percentage_detection_reason": percentage_detection_reason,
+        "failing_columns": list(failing_columns)
+    }
+    
+    os.makedirs('json', exist_ok=True)
+    json_file_path = 'json/dominance_violations.json'
+    
+    with open(json_file_path, 'w') as json_file:
+        json.dump(results, json_file)
+    
     print(f"Total rows checked: {len(df)}")
     print(f"Total violations found: {len(violations)}")
-    return json_file
+    
+    return json_file_path
 
-if __name__ == "__main__":
-    check_dominance_rule('intermediate/supporting_cleaned.csv', 'json/dominance_violations.json')
+check_dominance_rule('intermediate/supporting_cleaned.csv')

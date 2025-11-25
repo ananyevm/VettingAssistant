@@ -328,7 +328,7 @@ Generate a complete Python script named "rule_of_10_checker.py".
         st.error(f"Error generating rule of 10 checker: {str(e)}")
         return None
 
-def generate_dominance_checker(cleaned_file_path: str, filename: str) -> Optional[str]:
+def generate_dominance_checker(cleaned_file_path: str, filename: str, description_content: str = "") -> Optional[str]:
     """Use OpenAI to generate Python code for dominance rule checking"""
     try:
         api_key = get_openai_api_key()
@@ -336,23 +336,61 @@ def generate_dominance_checker(cleaned_file_path: str, filename: str) -> Optiona
             return None
         client = openai.OpenAI(api_key=api_key)
         
+        # First, analyze column descriptions if available
+        column_analysis = ""
+        if description_content.strip():
+            column_analysis_prompt = f"""
+Based on the following data description, analyze each column name that will be found in the CSV file and determine if it represents a percentage, share, or proportion:
+
+Data Description:
+{description_content}
+
+For each column that appears to be a percentage/share/proportion, respond with:
+- Column name (or pattern)
+- Why it represents percentage/share data
+
+Be thorough in your analysis. Look for terms like percent, percentage, share, proportion, ratio, rate, etc.
+"""
+            try:
+                analysis_response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You are an expert data analyst. Analyze the data description to identify percentage/share columns."},
+                        {"role": "user", "content": column_analysis_prompt}
+                    ],
+                    temperature=0.1
+                )
+                column_analysis = analysis_response.choices[0].message.content.strip()
+            except Exception:
+                column_analysis = "Column analysis not available"
+
         prompt = f"""
 Create a Python script that checks the "dominance rule" for a CSV file. The dominance rule checks if any cell value divided by its row sum exceeds 0.8 (80%).
 
+Column Analysis from Description:
+{column_analysis}
+
 Requirements:
 1. Read the CSV file from: {cleaned_file_path}
-2. For each row, calculate the sum of all numeric values
-3. For each cell in that row, check if (cell_value / row_sum) > 0.8
-4. For each violation, record:
+2. FIRST, perform the dominance rule check normally
+3. For each row, calculate the sum of all numeric values
+4. For each cell in that row, check if (cell_value / row_sum) > 0.8
+5. For each violation, record:
    - Row number
    - Column name
    - Cell value (convert to Python native types for JSON serialization)
    - Row sum
    - Dominance ratio (cell_value / row_sum)
-   - Cell position (row, col)
-5. Save results to a JSON file called "json/dominance_violations.json"
-6. The JSON should contain a list of violations with the structure:
-   {{"violations": [{{"row": int, "column": str, "value": any, "row_sum": float, "dominance_ratio": float, "position": [int, int]}}]}}
+   - Cell position as [row_index, column_index] where both are integers (use df.columns.get_loc(col) to get column index)
+6. Save results to a JSON file called "json/dominance_violations.json"
+7. AFTER finding violations, analyze if ALL columns that have violations are percentage/share columns using:
+   - The column analysis provided above
+   - Column names containing words like "percent", "percentage", "share", "%", "proportion", "ratio"  
+   - If most numeric values in those specific columns are between 0 and 1 (decimal percentages)
+   - If most numeric values in those specific columns are between 0 and 100 (percentage format)
+   - Set is_percentage_data = True ONLY if ALL columns WITH VIOLATIONS appear to be percentages/shares
+8. The JSON should contain:
+   {{"violations": [...], "is_percentage_data": boolean, "percentage_detection_reason": "string explaining detection based on failing columns analysis", "failing_columns": ["list of column names with violations"]}}
 
 The script should:
 - Handle different data types (numbers, strings, empty cells)
@@ -364,6 +402,8 @@ The script should:
 - Instead, use list comprehension or isinstance() to filter numeric values from the row Series
 - Handle numpy data types (numpy.int64, numpy.float64, etc.) properly
 - Convert pandas/numpy data types to Python native types before JSON serialization
+- CRITICAL: Store cell_position as [row_index, column_index] with BOTH values as integers, NOT as (row, column_name)
+- Use df.columns.get_loc(col) to convert column name to integer index
 - Create the json directory if it doesn't exist
 - Print summary statistics including total rows checked and violations found
 - Return the path to the JSON results file
@@ -462,11 +502,11 @@ def run_rule_of_10_check(cleaned_file_path: str, filename: str) -> Dict[str, Any
     except Exception as e:
         return {"error": f"Error running rule of 10 check: {str(e)}"}
 
-def run_dominance_check(cleaned_file_path: str, filename: str) -> Dict[str, Any]:
+def run_dominance_check(cleaned_file_path: str, filename: str, description_content: str = "") -> Dict[str, Any]:
     """Generate and run dominance rule checker"""
     try:
         # Generate dominance checker
-        checker_code = generate_dominance_checker(cleaned_file_path, filename)
+        checker_code = generate_dominance_checker(cleaned_file_path, filename, description_content)
         
         if not checker_code:
             return {"error": "Failed to generate dominance checker code"}
@@ -486,7 +526,7 @@ def run_dominance_check(cleaned_file_path: str, filename: str) -> Dict[str, Any]
             spec.loader.exec_module(dominance_checker)
             csv_path = 'intermediate/supporting_cleaned.csv'
             results_path = "json/dominance_violations.json"
-            dominance_checker.check_dominance_rule(csv_path, results_path)
+            dominance_checker.check_dominance_rule(csv_path)
             
             # Read the results JSON
             if os.path.exists(results_path):
@@ -609,7 +649,8 @@ def main():
                     st.markdown("## 🚨 Dominance Rule Check")
                     dominance_results = run_dominance_check(
                         supporting_data_results["cleaned_file_path"], 
-                        supporting_data_file.name
+                        supporting_data_file.name,
+                        content
                     )
                     
                     if "error" in dominance_results:
@@ -618,19 +659,34 @@ def main():
                         # Display dominance results
                         dom_violations = dominance_results["violations"]
                         dom_violation_count = len(dom_violations["violations"])
+                        is_percentage_data = dom_violations.get("is_percentage_data", False)
+                        percentage_reason = dom_violations.get("percentage_detection_reason", "")
+                        failing_columns = dom_violations.get("failing_columns", [])
                         
                         if dom_violation_count == 0:
                             st.success("🟢 **Dominance Rule Check: PASSED** - No violations found!")
                         else:
-                            st.error(f"🔴 **DOMINANCE RULE VIOLATION - RED ALERT!** - Found {dom_violation_count} violations where cell values exceed 80% of row sum")
+                            if is_percentage_data:
+                                failing_cols_str = ", ".join(failing_columns) if failing_columns else "detected columns"
+                                st.success(f"🟢 **Dominance Rule Check: PASSED (Information Only)** - Found {dom_violation_count} high dominance values in percentage/share columns ({failing_cols_str}). {percentage_reason}")
+                            else:
+                                st.error(f"🔴 **DOMINANCE RULE VIOLATION - RED ALERT!** - Found {dom_violation_count} violations where cell values exceed 80% of row sum")
                             
                             # Show dominance violations in expander
-                            with st.expander(f"View Dominance Rule Violations ({dom_violation_count})"):
+                            if is_percentage_data:
+                                expander_title = f"View High Percentage Values ({dom_violation_count})"
+                            else:
+                                expander_title = f"View Dominance Rule Violations ({dom_violation_count})"
+                            with st.expander(expander_title):
                                 dom_violations_df = pd.DataFrame(dom_violations["violations"])
                                 st.dataframe(dom_violations_df)
                                 
                                 # Show dominance summary stats
-                                st.write("**Dominance Violation Summary:**")
+                                if is_percentage_data:
+                                    st.write("**High Percentage Values Summary:**")
+                                    st.info("Note: High values are expected in percentage/share data and do not indicate dominance issues.")
+                                else:
+                                    st.write("**Dominance Violation Summary:**")
                                 if not dom_violations_df.empty:
                                     col_dom_violations = dom_violations_df['column'].value_counts()
                                     st.write("Violations by column:")
